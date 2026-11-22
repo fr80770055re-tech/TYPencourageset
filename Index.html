@@ -158,6 +158,12 @@
   .side { padding:20px 16px 4px; display:flex; align-items:flex-end; justify-content:space-between; gap:12px; }
   .side .me { text-align:right; }
   .side .me .mail { display:none; }
+  .me-name { display:inline-flex; align-items:center; gap:4px; margin:-4px -6px; padding:4px 6px; border-radius:8px;
+    font-size:14px; color:var(--ink); transition:background-color .2s, transform .18s var(--ease); }
+  .me-name svg.i { width:14px; height:14px; color:var(--muted); }
+  .me-name:hover { background:rgba(255,255,255,.7); }
+  .me-name:active { transform:scale(.96); }
+  .name-actions { display:grid; gap:10px; }
   .content { padding:12px 16px calc(var(--nav-h) + 40px + env(safe-area-inset-bottom)); }
   .content.giving { padding-bottom:calc(var(--nav-h) + 110px + env(safe-area-inset-bottom)); }
 
@@ -268,7 +274,7 @@
     .side::after { content:""; margin:auto 8px 0; height:8px; opacity:.75; border-radius:2px;
       background:var(--weave) repeat-x center / 16px 8px; }
     .side .me { text-align:left; padding:6px 8px 0; }
-    .side .me .mail { display:inline; }
+    .side .me .mail { display:block; margin-top:2px; }
     .nav { position:relative; left:auto; right:auto; bottom:auto; height:auto; flex-direction:column; gap:4px; margin-top:28px; padding:0;
       background:none; border:0; box-shadow:none; -webkit-backdrop-filter:none; backdrop-filter:none; border-radius:0; }
     .nav button { flex:none; flex-direction:row; justify-content:flex-start; gap:12px; height:48px; padding:0 14px; font-size:16px; }
@@ -346,10 +352,13 @@
   <div class="center">
     <div class="brand" style="margin:0 4px 16px"><span class="brand-sub">高雄市桃源國小</span><span class="brand-main">全校加分系統</span></div>
     <form id="nameForm" class="glass panel tabpanel">
-      <label class="label" for="nameInput">第一次使用，請輸入學生會看到的稱呼</label>
+      <label class="label" for="nameInput" id="nameLabel">第一次使用，請輸入學生會看到的稱呼</label>
       <input id="nameInput" placeholder="例如：王老師、學務處" maxlength="20" autocomplete="off" required>
       <div style="height:14px"></div>
-      <button class="btn primary" type="submit">開始使用</button>
+      <div class="name-actions">
+        <button class="btn primary" type="submit" id="nameSubmit">開始使用</button>
+        <button class="btn soft" type="button" id="nameCancel" hidden>取消</button>
+      </div>
       <div id="nameErr" class="note" style="color:var(--red)"></div>
     </form>
   </div>
@@ -470,6 +479,7 @@
     return e;
   }
   const ICON = {
+    pencil: '<svg class="i" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></svg>',
     check: '<svg class="i" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
     eye: '<svg class="i" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></svg>',
     eyeOff: '<svg class="i" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.6A9.6 9.6 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-3 3.7M6.6 6.6A17 17 0 0 0 2.5 12S6 18.5 12 18.5c1.6 0 3-.4 4.2-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>'
@@ -561,13 +571,39 @@
   $('nameForm').addEventListener('submit', ev => {
     ev.preventDefault();
     $('nameErr').textContent = '';
-    call('setName', $('nameInput').value).then(n => { B.name = n; showStaff(); })
-      .catch(e => { $('nameErr').textContent = errMsg(e); });
+    const renaming = !!B.name;
+    $('nameSubmit').disabled = true;
+    call('setName', $('nameInput').value).then(n => {
+      B.name = n;
+      if (!renaming) return showStaff();
+      renderMe(); backToStaff(); toast('稱呼已改成「' + n + '」');
+    }).catch(e => { $('nameErr').textContent = errMsg(e); })
+      .finally(() => { $('nameSubmit').disabled = false; });
   });
+  // 已經設定過稱呼的老師，點自己的名字就能改（職務變動時用）。
+  function openRename() {
+    $('nameLabel').textContent = '修改學生會看到的稱呼。過去的紀錄也會一起顯示新的稱呼。';
+    $('nameInput').value = B.name;
+    $('nameSubmit').textContent = '儲存';
+    $('nameCancel').hidden = false;
+    $('nameErr').textContent = '';
+    only('vName');
+    replay($('nameForm'));
+    $('nameInput').focus(); $('nameInput').select();
+  }
+  function backToStaff() { only('vStaff'); requestAnimationFrame(moveInd); }
+  $('nameCancel').addEventListener('click', backToStaff);
+  function renderMe() {
+    const b = el('button', 'me-name', '');
+    b.type = 'button'; b.title = '修改稱呼'; b.setAttribute('aria-label', '修改稱呼：' + B.name);
+    b.innerHTML = ICON.pencil; b.prepend(document.createTextNode(B.name));
+    b.addEventListener('click', openRename);
+    $('staffSub').replaceChildren(b, el('span', 'mail', B.email));
+  }
 
   // ───── 老師：外框與分頁 ─────
   function showStaff() {
-    $('staffSub').replaceChildren(el('span', '', B.name), el('span', 'mail', '・' + B.email));
+    renderMe();
     const classes = Object.keys(B.roster).sort();
     fillSelect($('giveClass'), classes, B.homeroomClasses[0] || classes[0]);
     $('giveClassWrap').hidden = classes.length < 2;
